@@ -3,19 +3,21 @@ import {
   UserPlus,
   PhoneCall,
   PhoneIncoming,
-  PhoneMissed,
   BadgeCheck,
   CalendarClock,
   ArrowRight,
   MessageCircle,
   UserRound,
   CalendarCheck,
+  Radio,
 } from "lucide-react";
 import KpiCard from "@/components/kpi/KpiCard";
-import { TemperatureBadge, StatusPill } from "@/components/status-badge/StatusBadge";
+import { TemperatureBadge } from "@/components/status-badge/StatusBadge";
 import { leadsService } from "@/services/leadsService";
+import { callsService } from "@/services/callsService";
 import { activityService } from "@/services/activityService";
 import { associatesService } from "@/services/associatesService";
+import CallPlayer from "@/components/call-player/CallPlayer";
 import { EmptyState } from "@/components/common/States";
 import type { LeadStatus } from "@/lib/types";
 
@@ -32,14 +34,18 @@ function timeAgo(iso: string) {
 }
 
 export default async function DashboardPage() {
-  const [stats, needsAttention, activity, associates] = await Promise.all([
+  const [stats, needsAttention, activity, associates, calls, leads] = await Promise.all([
     leadsService.getDashboardStats(),
     leadsService.getNeedsAttention(),
     activityService.getRecent(8),
     associatesService.getAll(),
+    callsService.getAll(),
+    leadsService.getAll(),
   ]);
 
-  const associateName = (id: string | null) => associates.find((a) => a.id === id)?.name ?? null;
+  const latestCallWithAudio =
+    calls.find((c) => c.recordingUrl || (c.transcript && c.transcript.length > 0)) ?? calls[0] ?? null;
+  const latestCallLead = latestCallWithAudio ? leads.find((l) => l.id === latestCallWithAudio.leadId) : null;
 
   return (
     <div className="space-y-8">
@@ -80,6 +86,49 @@ export default async function DashboardPage() {
           >
             Dispatch Leads <ArrowRight size={13} />
           </Link>
+        </div>
+      )}
+
+      {/* Latest Voice AI Call Intelligence & Playback Spotlight */}
+      {latestCallWithAudio && (
+        <div className="rounded-xl border border-ink-900/10 bg-white p-5 shadow-card">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-ink-900/10 pb-4">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gold-400/10 text-gold-600">
+                <Radio size={16} className="animate-pulse" />
+              </div>
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-ink-700/50">Voice AI Intelligence</p>
+                <h3 className="font-display text-base text-ink-950">
+                  Latest Consultation — {latestCallLead?.buyerName ?? latestCallWithAudio.leadId}
+                </h3>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {latestCallLead?.temperature && <TemperatureBadge temperature={latestCallLead.temperature} />}
+              <Link
+                href={latestCallLead ? `/leads/${latestCallLead.id}` : `/calls/${latestCallWithAudio.id}`}
+                className="focus-ring text-xs font-medium text-gold-600 hover:text-gold-500"
+              >
+                View Full Analysis →
+              </Link>
+            </div>
+          </div>
+
+          <div className="mt-4">
+            <CallPlayer
+              recordingUrl={latestCallWithAudio.recordingUrl}
+              transcript={latestCallWithAudio.transcript}
+              durationSeconds={latestCallWithAudio.durationSeconds}
+            />
+          </div>
+
+          {latestCallWithAudio.summary && (
+            <p className="mt-3 text-xs leading-relaxed text-ink-700/70 border-t border-ink-900/5 pt-2.5">
+              <strong className="text-ink-900 font-medium">AI Summary: </strong>
+              {latestCallWithAudio.summary}
+            </p>
+          )}
         </div>
       )}
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, useEffect, useCallback } from "react";
-import { Play, Pause, Volume2, Gauge, Sparkles } from "lucide-react";
+import { Play, Pause, Volume2, Gauge, Sparkles, AlertCircle } from "lucide-react";
 import type { TranscriptLine } from "@/lib/types";
 
 function formatTime(s: number) {
@@ -26,21 +26,61 @@ export default function CallPlayer({ recordingUrl, transcript, durationSeconds }
   const [volume, setVolume] = useState(1);
   const [useSynth, setUseSynth] = useState(false);
   const [currentLineIdx, setCurrentLineIdx] = useState(0);
+  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
 
   // Synth timer interval ref
   const synthTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const keepAliveRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isPlayingRef = useRef(false);
   isPlayingRef.current = playing;
+
+  const currentLineRef = useRef(0);
+  currentLineRef.current = currentLineIdx;
+
+  // Load available speech synthesis voices
+  useEffect(() => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+
+    function updateVoices() {
+      const v = window.speechSynthesis.getVoices();
+      if (v && v.length > 0) {
+        setAvailableVoices(v);
+      }
+    }
+
+    updateVoices();
+    window.speechSynthesis.addEventListener("voiceschanged", updateVoices);
+    return () => {
+      window.speechSynthesis.removeEventListener("voiceschanged", updateVoices);
+    };
+  }, []);
 
   // Approximate total duration from transcript if duration is 0
   useEffect(() => {
     if (durationSeconds && durationSeconds > 0) {
       setDuration(durationSeconds);
     } else if (transcript && transcript.length > 0) {
-      // Estimate ~3.5 seconds per dialogue line
-      setDuration(transcript.length * 3.5);
+      setDuration(transcript.length * 4);
     }
   }, [durationSeconds, transcript]);
+
+  // Keep speech synthesis alive in Chrome (prevents auto-pausing after 15s)
+  const startKeepAlive = useCallback(() => {
+    if (keepAliveRef.current) clearInterval(keepAliveRef.current);
+    keepAliveRef.current = setInterval(() => {
+      if (typeof window !== "undefined" && "speechSynthesis" in window && window.speechSynthesis.speaking) {
+        window.speechSynthesis.pause();
+        window.speechSynthesis.resume();
+      }
+    }, 10000);
+  }, []);
+
+  const stopKeepAlive = useCallback(() => {
+    if (keepAliveRef.current) {
+      clearInterval(keepAliveRef.current);
+      keepAliveRef.current = null;
+    }
+  }, []);
 
   // Speech synthesis line player
   const speakLine = useCallback(
@@ -48,6 +88,7 @@ export default function CallPlayer({ recordingUrl, transcript, durationSeconds }
       if (!transcript || index >= transcript.length || !isPlayingRef.current) {
         setPlaying(false);
         if (synthTimerRef.current) clearInterval(synthTimerRef.current);
+        stopKeepAlive();
         return;
       }
 
@@ -57,21 +98,31 @@ export default function CallPlayer({ recordingUrl, transcript, durationSeconds }
       }
 
       window.speechSynthesis.cancel();
+      window.speechSynthesis.resume();
 
       const line = transcript[index];
-      const utterance = new SpeechSynthesisUtterance(line.text);
+      const textToSpeak = line.text.replace(/^[A-Za-z0-9\s]+:\s*/, "");
+      const utterance = new SpeechSynthesisUtterance(textToSpeak || line.text);
       utterance.rate = rate;
       utterance.volume = volume;
 
-      // Select distinct voices for Agent vs User
-      const voices = window.speechSynthesis.getVoices();
-      if (line.role === "AI Agent" || /sofia/i.test(line.speaker)) {
-        utterance.pitch = 1.15;
-        const femaleVoice = voices.find((v) => /female|samantha|victoria|zira|karen/i.test(v.name));
+      // Select distinct natural voices
+      const voices = availableVoices.length > 0 ? availableVoices : window.speechSynthesis.getVoices();
+      if (line.role === "AI Agent" || /sofia|assistant|agent/i.test(line.speaker)) {
+        utterance.pitch = 1.1;
+        const femaleVoice = voices.find(
+          (v) =>
+            v.lang.startsWith("en") &&
+            (/female|samantha|victoria|zira|karen|aria|jenny|natural/i.test(v.name) || /female/i.test(v.name))
+        );
         if (femaleVoice) utterance.voice = femaleVoice;
       } else {
         utterance.pitch = 0.95;
-        const maleVoice = voices.find((v) => /male|david|george|daniel/i.test(v.name));
+        const maleVoice = voices.find(
+          (v) =>
+            v.lang.startsWith("en") &&
+            (/male|david|george|daniel|guy|natural/i.test(v.name) || /male/i.test(v.name))
+        );
         if (maleVoice) utterance.voice = maleVoice;
       }
 
@@ -83,8 +134,8 @@ export default function CallPlayer({ recordingUrl, transcript, durationSeconds }
         }
       };
 
-      utterance.onerror = () => {
-        if (isPlayingRef.current) {
+      utterance.onerror = (e) => {
+        if (e.error !== "canceled" && isPlayingRef.current) {
           const nextIdx = index + 1;
           setCurrentLineIdx(nextIdx);
           speakLine(nextIdx);
@@ -93,8 +144,9 @@ export default function CallPlayer({ recordingUrl, transcript, durationSeconds }
 
       setCurrentLineIdx(index);
       window.speechSynthesis.speak(utterance);
+      startKeepAlive();
     },
-    [transcript, rate, volume]
+    [transcript, rate, volume, availableVoices, startKeepAlive, stopKeepAlive]
   );
 
   // Stop synthesis on unmount
@@ -104,6 +156,7 @@ export default function CallPlayer({ recordingUrl, transcript, durationSeconds }
         window.speechSynthesis.cancel();
       }
       if (synthTimerRef.current) clearInterval(synthTimerRef.current);
+      if (keepAliveRef.current) clearInterval(keepAliveRef.current);
     };
   }, []);
 
@@ -115,36 +168,48 @@ export default function CallPlayer({ recordingUrl, transcript, durationSeconds }
     );
   }
 
-  function handleAudioError() {
-    // If native audio fails (e.g. 400 Bad Request on private cloudflarestorage URL), switch to synth
+  function startSynthPlayback(fromIdx = 0) {
     setUseSynth(true);
+    setPlaying(true);
+    setCurrentLineIdx(fromIdx);
+    speakLine(fromIdx);
+
+    if (synthTimerRef.current) clearInterval(synthTimerRef.current);
+    synthTimerRef.current = setInterval(() => {
+      setCurrent((prev) => {
+        if (prev >= duration && duration > 0) {
+          setPlaying(false);
+          return duration;
+        }
+        return prev + 0.25;
+      });
+    }, 250);
+  }
+
+  function handleAudioError() {
+    // If native audio fails (e.g. 400 Bad Request on Cloudflare R2), auto-fallback to synth
+    startSynthPlayback(currentLineRef.current);
   }
 
   function toggle() {
     if (!playing) {
-      // Start playing
       setPlaying(true);
+
+      // If already in synth mode or no direct audio URL
       if (useSynth || !recordingUrl) {
-        // Speech synth mode
-        speakLine(currentLineIdx);
-        if (synthTimerRef.current) clearInterval(synthTimerRef.current);
-        synthTimerRef.current = setInterval(() => {
-          setCurrent((prev) => {
-            if (prev >= duration) {
-              setPlaying(false);
-              return duration;
-            }
-            return prev + 0.25;
-          });
-        }, 250);
+        startSynthPlayback(currentLineIdx);
+        return;
+      }
+
+      // Try native HTML5 audio
+      const a = audioRef.current;
+      if (a) {
+        a.play().catch(() => {
+          // If browser audio playback fails, switch to speech synthesis
+          startSynthPlayback(currentLineIdx);
+        });
       } else {
-        const a = audioRef.current;
-        if (a) {
-          a.play().catch(() => {
-            setUseSynth(true);
-            speakLine(currentLineIdx);
-          });
-        }
+        startSynthPlayback(currentLineIdx);
       }
     } else {
       // Pause
@@ -154,6 +219,7 @@ export default function CallPlayer({ recordingUrl, transcript, durationSeconds }
           window.speechSynthesis.cancel();
         }
         if (synthTimerRef.current) clearInterval(synthTimerRef.current);
+        stopKeepAlive();
       } else {
         const a = audioRef.current;
         if (a) a.pause();
@@ -166,6 +232,9 @@ export default function CallPlayer({ recordingUrl, transcript, durationSeconds }
     const next = rates[(rates.indexOf(rate) + 1) % rates.length];
     setRate(next);
     if (audioRef.current) audioRef.current.playbackRate = next;
+    if (useSynth && playing) {
+      speakLine(currentLineIdx);
+    }
   }
 
   function handleSeek(newTime: number) {
@@ -173,8 +242,7 @@ export default function CallPlayer({ recordingUrl, transcript, durationSeconds }
     if (!useSynth && audioRef.current) {
       audioRef.current.currentTime = newTime;
     } else if (transcript && transcript.length > 0 && duration > 0) {
-      // Seek to approximate line
-      const fraction = newTime / duration;
+      const fraction = Math.max(0, Math.min(1, newTime / duration));
       const targetIdx = Math.min(Math.floor(fraction * transcript.length), transcript.length - 1);
       setCurrentLineIdx(targetIdx);
       if (playing) {
@@ -183,12 +251,16 @@ export default function CallPlayer({ recordingUrl, transcript, durationSeconds }
     }
   }
 
+  const currentSpeaker = transcript && transcript[currentLineIdx] ? transcript[currentLineIdx].speaker : "Sofia";
+  const currentText = transcript && transcript[currentLineIdx] ? transcript[currentLineIdx].text : null;
+
   return (
     <div className="rounded-xl border border-ink-900/10 bg-white p-4 shadow-card">
       {recordingUrl && !useSynth && (
         <audio
           ref={audioRef}
           src={recordingUrl}
+          preload="metadata"
           onLoadedMetadata={(e) => {
             if (e.currentTarget.duration && Number.isFinite(e.currentTarget.duration)) {
               setDuration(e.currentTarget.duration);
@@ -202,9 +274,10 @@ export default function CallPlayer({ recordingUrl, transcript, durationSeconds }
 
       <div className="flex items-center gap-4">
         <button
+          type="button"
           onClick={toggle}
-          className="focus-ring flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-ink-950 text-white shadow transition hover:bg-ink-900 active:scale-95"
-          aria-label={playing ? "Pause recording" : "Play recording"}
+          className="focus-ring flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-ink-950 text-white shadow transition hover:bg-ink-900 active:scale-95 cursor-pointer"
+          aria-label={playing ? "Pause voice playback" : "Play voice recording"}
         >
           {playing ? <Pause size={16} /> : <Play size={16} className="ml-0.5" />}
         </button>
@@ -227,8 +300,9 @@ export default function CallPlayer({ recordingUrl, transcript, durationSeconds }
         </div>
 
         <button
+          type="button"
           onClick={cycleRate}
-          className="focus-ring flex items-center gap-1 rounded-md border border-ink-900/15 px-2 py-1 text-xs font-medium text-ink-700 hover:border-gold-400/60"
+          className="focus-ring flex items-center gap-1 rounded-md border border-ink-900/15 px-2 py-1 text-xs font-medium text-ink-700 hover:border-gold-400/60 cursor-pointer"
           aria-label={`Playback speed ${rate}x`}
         >
           <Gauge size={13} /> {rate}x
@@ -253,10 +327,24 @@ export default function CallPlayer({ recordingUrl, transcript, durationSeconds }
         </div>
       </div>
 
+      {/* Real-time speech synthesizer indicator and active dialogue caption */}
       {useSynth && transcript && transcript.length > 0 && (
-        <div className="mt-3 flex items-center gap-1.5 text-xs text-gold-600">
-          <Sparkles size={13} />
-          <span>Voice playback ready (AI Dialogue Synthesis)</span>
+        <div className="mt-3.5 rounded-lg border border-gold-400/20 bg-gold-400/5 p-3">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 text-xs font-medium text-gold-700">
+              <Sparkles size={13} className="text-gold-500 animate-pulse" />
+              <span>Voice Playback Engine ({playing ? "Active" : "Ready"})</span>
+            </div>
+            <span className="text-[11px] text-ink-700/50">
+              Line {currentLineIdx + 1} of {transcript.length}
+            </span>
+          </div>
+          {currentText && (
+            <p className="mt-1.5 text-xs leading-relaxed text-ink-900">
+              <strong className="text-ink-950 font-semibold">{currentSpeaker}: </strong>
+              <span>{currentText}</span>
+            </p>
+          )}
         </div>
       )}
     </div>
