@@ -1,0 +1,18 @@
+﻿services:
+  - type: web
+    name: onex-lead-management
+    env: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: APP_MODE
+        value: live
+      - key: GOOGLE_SHEET_ID
+        value: 1xyws59k-D6Lc1xwt9YBMrMh86hPd41G2gLXVaBlRQv4
+      - key: NEXT_PUBLIC_VAPI_PUBLIC_KEY
+        value: bbcd9aa6-2886-4840-a1fc-c8506156eb7f
+      - key: NEXT_PUBLIC_VAPI_ASSISTANT_ID
+        value: 63da05f1-f607-41c3-848f-4d2e5926b16c
