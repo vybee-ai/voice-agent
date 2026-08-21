@@ -1,4 +1,4 @@
-﻿import http from "http";
+import http from "http";
 
 const BASE_URL = "http://localhost:3000";
 
@@ -29,6 +29,8 @@ const routesToTest: TestRoute[] = [
   { path: "/settings/voice", expectedStatus: [200], expectedContent: ["Voice Provider", "Sofia"] },
   { path: "/settings/ai-agent", expectedStatus: [200], expectedContent: ["AI Agent", "Qualification Threshold"] },
   { path: "/settings/team", expectedStatus: [200], expectedContent: ["Team"] },
+  { path: "/health", expectedStatus: [200], expectedContent: ['"status":"ok"'] },
+  { path: "/api/health", expectedStatus: [200], expectedContent: ['"status":"ok"'] },
   { path: "/api/leads", expectedStatus: [200], expectedContent: ["leads", "count"] },
   {
     path: "/api/leads",

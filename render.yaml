@@ -1,8 +1,9 @@
-﻿services:
+services:
   - type: web
     name: onex-lead-management
     env: node
-    plan: free
+    plan: starter
+    healthCheckPath: /health
     buildCommand: npm install && npm run build
     startCommand: npm start
     envVars:
