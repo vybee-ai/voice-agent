@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, useEffect, useCallback } from "react";
-import { Play, Pause, Volume2, Gauge, Sparkles, AlertCircle } from "lucide-react";
+import { Play, Pause, Volume2, Gauge, Sparkles, Loader2 } from "lucide-react";
 import type { TranscriptLine } from "@/lib/types";
 
 function formatTime(s: number) {
@@ -20,6 +20,7 @@ interface Props {
 export default function CallPlayer({ recordingUrl, transcript, durationSeconds }: Props) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [playing, setPlaying] = useState(false);
+  const [isBuffering, setIsBuffering] = useState(false);
   const [current, setCurrent] = useState(0);
   const [duration, setDuration] = useState(durationSeconds || 0);
   const [rate, setRate] = useState(1);
@@ -87,6 +88,7 @@ export default function CallPlayer({ recordingUrl, transcript, durationSeconds }
     (index: number) => {
       if (!transcript || index >= transcript.length || !isPlayingRef.current) {
         setPlaying(false);
+        setIsBuffering(false);
         if (synthTimerRef.current) clearInterval(synthTimerRef.current);
         stopKeepAlive();
         return;
@@ -94,6 +96,7 @@ export default function CallPlayer({ recordingUrl, transcript, durationSeconds }
 
       if (typeof window === "undefined" || !("speechSynthesis" in window)) {
         setPlaying(false);
+        setIsBuffering(false);
         return;
       }
 
@@ -130,6 +133,9 @@ export default function CallPlayer({ recordingUrl, transcript, durationSeconds }
         if (isPlayingRef.current) {
           const nextIdx = index + 1;
           setCurrentLineIdx(nextIdx);
+          if (transcript && duration > 0) {
+            setCurrent(Math.min(duration, ((nextIdx) / transcript.length) * duration));
+          }
           speakLine(nextIdx);
         }
       };
@@ -143,10 +149,13 @@ export default function CallPlayer({ recordingUrl, transcript, durationSeconds }
       };
 
       setCurrentLineIdx(index);
+      if (transcript && duration > 0) {
+        setCurrent((index / transcript.length) * duration);
+      }
       window.speechSynthesis.speak(utterance);
       startKeepAlive();
     },
-    [transcript, rate, volume, availableVoices, startKeepAlive, stopKeepAlive]
+    [transcript, rate, volume, availableVoices, duration, startKeepAlive, stopKeepAlive]
   );
 
   // Stop synthesis on unmount
@@ -162,7 +171,7 @@ export default function CallPlayer({ recordingUrl, transcript, durationSeconds }
 
   if (!recordingUrl && (!transcript || transcript.length === 0)) {
     return (
-      <div className="flex items-center justify-center rounded-xl border border-dashed border-ink-900/15 bg-sand-50 py-10 text-sm text-ink-700/50">
+      <div className="flex items-center justify-center rounded-xl border border-dashed border-ink-900/15 bg-sand-50 py-8 text-sm text-ink-700/50">
         Recording unavailable
       </div>
     );
@@ -171,30 +180,36 @@ export default function CallPlayer({ recordingUrl, transcript, durationSeconds }
   function startSynthPlayback(fromIdx = 0) {
     setUseSynth(true);
     setPlaying(true);
+    setIsBuffering(false);
     setCurrentLineIdx(fromIdx);
     speakLine(fromIdx);
 
     if (synthTimerRef.current) clearInterval(synthTimerRef.current);
     synthTimerRef.current = setInterval(() => {
-      setCurrent((prev) => {
-        if (prev >= duration && duration > 0) {
-          setPlaying(false);
-          return duration;
-        }
-        return prev + 0.25;
-      });
+      if (typeof window !== "undefined" && "speechSynthesis" in window && window.speechSynthesis.speaking) {
+        setCurrent((prev) => {
+          if (prev >= duration && duration > 0) {
+            setPlaying(false);
+            return duration;
+          }
+          return prev + 0.25;
+        });
+      }
     }, 250);
   }
 
   function handleAudioError() {
-    // If native audio fails (e.g. 400 Bad Request on Cloudflare R2), auto-fallback to synth
-    startSynthPlayback(currentLineRef.current);
+    // If native audio fails (e.g. 404 or network error), auto-fallback to synth if transcript is present
+    if (transcript && transcript.length > 0) {
+      startSynthPlayback(currentLineRef.current);
+    } else {
+      setIsBuffering(false);
+      setPlaying(false);
+    }
   }
 
   function toggle() {
     if (!playing) {
-      setPlaying(true);
-
       // If already in synth mode or no direct audio URL
       if (useSynth || !recordingUrl) {
         startSynthPlayback(currentLineIdx);
@@ -204,16 +219,23 @@ export default function CallPlayer({ recordingUrl, transcript, durationSeconds }
       // Try native HTML5 audio
       const a = audioRef.current;
       if (a) {
-        a.play().catch(() => {
-          // If browser audio playback fails, switch to speech synthesis
-          startSynthPlayback(currentLineIdx);
-        });
+        setIsBuffering(true);
+        a.play()
+          .then(() => {
+            setPlaying(true);
+            setIsBuffering(false);
+          })
+          .catch(() => {
+            // If browser audio playback fails, switch to speech synthesis
+            startSynthPlayback(currentLineIdx);
+          });
       } else {
         startSynthPlayback(currentLineIdx);
       }
     } else {
       // Pause
       setPlaying(false);
+      setIsBuffering(false);
       if (useSynth || !recordingUrl) {
         if (typeof window !== "undefined" && "speechSynthesis" in window) {
           window.speechSynthesis.cancel();
@@ -265,9 +287,25 @@ export default function CallPlayer({ recordingUrl, transcript, durationSeconds }
             if (e.currentTarget.duration && Number.isFinite(e.currentTarget.duration)) {
               setDuration(e.currentTarget.duration);
             }
+            setIsBuffering(false);
+          }}
+          onWaiting={() => setIsBuffering(true)}
+          onCanPlay={() => setIsBuffering(false)}
+          onPlaying={() => {
+            setPlaying(true);
+            setIsBuffering(false);
+          }}
+          onPlay={() => setPlaying(true)}
+          onPause={() => {
+            setPlaying(false);
+            setIsBuffering(false);
           }}
           onTimeUpdate={(e) => setCurrent(e.currentTarget.currentTime)}
-          onEnded={() => setPlaying(false)}
+          onEnded={() => {
+            setPlaying(false);
+            setIsBuffering(false);
+            setCurrent(duration);
+          }}
           onError={handleAudioError}
         />
       )}
@@ -276,10 +314,17 @@ export default function CallPlayer({ recordingUrl, transcript, durationSeconds }
         <button
           type="button"
           onClick={toggle}
-          className="focus-ring flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-ink-950 text-white shadow transition hover:bg-ink-900 active:scale-95 cursor-pointer"
+          disabled={isBuffering}
+          className="focus-ring flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-ink-950 text-white shadow transition hover:bg-ink-900 active:scale-95 cursor-pointer disabled:opacity-80"
           aria-label={playing ? "Pause voice playback" : "Play voice recording"}
         >
-          {playing ? <Pause size={16} /> : <Play size={16} className="ml-0.5" />}
+          {isBuffering ? (
+            <Loader2 size={16} className="animate-spin text-white" />
+          ) : playing ? (
+            <Pause size={16} />
+          ) : (
+            <Play size={16} className="ml-0.5" />
+          )}
         </button>
 
         <div className="flex-1">
@@ -350,3 +395,4 @@ export default function CallPlayer({ recordingUrl, transcript, durationSeconds }
     </div>
   );
 }
+

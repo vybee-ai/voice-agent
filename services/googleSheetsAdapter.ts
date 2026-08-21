@@ -1,3 +1,4 @@
+import { cache } from "react";
 import type {
   Lead,
   Call,
@@ -120,7 +121,7 @@ async function fetchGvizSheet(sheetTitle: string): Promise<RawRow[]> {
 
 const inFlightSheetRequests = new Map<string, { promise: Promise<RawRow[]>; timestamp: number }>();
 
-async function readSheet(sheetTitle: string): Promise<RawRow[]> {
+const readSheet = cache(async (sheetTitle: string): Promise<RawRow[]> => {
   const now = Date.now();
   const cached = inFlightSheetRequests.get(sheetTitle);
   // Re-use in-flight request within 3 seconds to avoid duplicate requests during the same SSR render
@@ -149,7 +150,7 @@ async function readSheet(sheetTitle: string): Promise<RawRow[]> {
 
   inFlightSheetRequests.set(sheetTitle, { promise: fetchPromise, timestamp: now });
   return fetchPromise;
-}
+});
 
 export const googleSheetsAdapter: DataAdapter = {
   async getLeads(): Promise<Lead[]> {

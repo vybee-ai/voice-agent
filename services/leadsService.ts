@@ -1,5 +1,5 @@
 import { getAdapter } from "./dataSource";
-import type { Lead, LeadStatus, DashboardStats } from "@/lib/types";
+import type { Lead, Call, LeadStatus, DashboardStats } from "@/lib/types";
 import { filterLeads, sortLeads, nextActionLabel, type LeadFilters, type LeadSortKey } from "@/lib/leadUtils";
 
 // Server-side data-fetching service. Pure helpers (filter/sort/next-action
@@ -31,9 +31,9 @@ export const leadsService = {
   sort: sortLeads,
   nextActionLabel,
 
-  async getDashboardStats(): Promise<DashboardStats> {
-    const leads = await this.getAll();
-    const calls = await getAdapter().getCalls();
+  async getDashboardStats(providedLeads?: Lead[], providedCalls?: Call[]): Promise<DashboardStats> {
+    const leads = providedLeads ?? (await this.getAll());
+    const calls = providedCalls ?? (await getAdapter().getCalls());
     const followUps = await getAdapter().getFollowUps();
     const allocations = await getAdapter().getAllocations();
 
@@ -63,8 +63,8 @@ export const leadsService = {
     };
   },
 
-  async getNeedsAttention(): Promise<Lead[]> {
-    const leads = await this.getAll();
+  async getNeedsAttention(providedLeads?: Lead[]): Promise<Lead[]> {
+    const leads = providedLeads ?? (await this.getAll());
     return leads.filter(
       (l) =>
         l.callOutcome === "No Answer" ||

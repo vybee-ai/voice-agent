@@ -34,13 +34,16 @@ function timeAgo(iso: string) {
 }
 
 export default async function DashboardPage() {
-  const [stats, needsAttention, activity, associates, calls, leads] = await Promise.all([
-    leadsService.getDashboardStats(),
-    leadsService.getNeedsAttention(),
+  const [leads, calls, activity, associates] = await Promise.all([
+    leadsService.getAll(),
+    callsService.getAll(),
     activityService.getRecent(8),
     associatesService.getAll(),
-    callsService.getAll(),
-    leadsService.getAll(),
+  ]);
+
+  const [stats, needsAttention] = await Promise.all([
+    leadsService.getDashboardStats(leads, calls),
+    leadsService.getNeedsAttention(leads),
   ]);
 
   const latestCallWithAudio =
