@@ -436,7 +436,7 @@ export const demoCalls: Call[] = [
     durationSeconds: 192,
     status: "Answered",
     outcome: "Qualified — Specialist follow-up requested",
-    recordingUrl: "https://demo-assets.onexproperties.ae/recordings/call-88231.mp3",
+    recordingUrl: null,
     transcript: rahulTranscript,
     summary:
       "Rahul is an investor targeting Dubai Marina or Business Bay, budget AED 1.5–2M, wants strong rental yield and metro proximity. Requested a callback tomorrow at 11 AM.",
@@ -485,7 +485,7 @@ export const demoCalls: Call[] = [
     durationSeconds: 165,
     status: "Answered",
     outcome: "Qualified — Specialist follow-up requested",
-    recordingUrl: "https://demo-assets.onexproperties.ae/recordings/call-88190.mp3",
+    recordingUrl: null,
     transcript: [
       { speaker: "SOFIA", role: "AI Agent", text: "Hi, is this Priya?", timestamp: "00:02" },
       { speaker: "PRIYA", role: "Specialist", text: "Yes, hi.", timestamp: "00:04" },

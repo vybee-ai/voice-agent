@@ -471,6 +471,16 @@ export function normalizeCall(row: RawRow, index: number): Call {
   const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawAgent ?? "");
   const agentName = rawAgent && !isUUID ? rawAgent : "Sofia";
 
+  const rawRecordingUrl = str(get("Recording URL", "recordingUrl", "recording_url"));
+  let recordingUrl: string | null = rawRecordingUrl;
+  const isVapiCallId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(callIdVal);
+
+  if (!recordingUrl && isVapiCallId) {
+    recordingUrl = `/api/recording?callId=${encodeURIComponent(callIdVal)}`;
+  } else if (recordingUrl && /demo-assets\.onexproperties\.ae/i.test(recordingUrl)) {
+    recordingUrl = null;
+  }
+
   return {
     id: callIdVal,
     callId: callIdVal,
@@ -483,7 +493,7 @@ export function normalizeCall(row: RawRow, index: number): Call {
     durationSeconds: num(get("Duration", "durationSeconds", "duration_seconds")),
     status: normalizeCallStatus(get("Status", "status", "call_status")),
     outcome: normalizeCallOutcome(get("Outcome", "outcome", "ended_reason", "call_outcome")),
-    recordingUrl: str(get("Recording URL", "recordingUrl", "recording_url")),
+    recordingUrl,
     transcript: normalizeTranscript(get("Transcript", "transcript")),
     summary: str(get("Summary", "summary", "call_summary", "next_action")),
     temperature: get("Temperature", "temperature", "lead_temperature") ? normalizeTemperature(get("Temperature", "temperature", "lead_temperature")) : null,
