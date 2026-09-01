@@ -1,6 +1,6 @@
 import { getAdapter } from "./dataSource";
 import type { Lead, Call, LeadStatus, DashboardStats } from "@/lib/types";
-import { filterLeads, sortLeads, nextActionLabel, type LeadFilters, type LeadSortKey } from "@/lib/leadUtils";
+import { filterLeads, sortLeads, nextActionLabel, isLeadQualified, type LeadFilters, type LeadSortKey } from "@/lib/leadUtils";
 
 // Server-side data-fetching service. Pure helpers (filter/sort/next-action
 // label) live in lib/leadUtils.ts so client components can import just
@@ -30,6 +30,7 @@ export const leadsService = {
   filter: filterLeads,
   sort: sortLeads,
   nextActionLabel,
+  isLeadQualified,
 
   async getDashboardStats(providedLeads?: Lead[], providedCalls?: Call[]): Promise<DashboardStats> {
     const leads = providedLeads ?? (await this.getAll());
@@ -46,7 +47,7 @@ export const leadsService = {
     };
     leads.forEach((l) => (pipeline[l.status] = (pipeline[l.status] ?? 0) + 1));
 
-    const qualifiedLeads = leads.filter((l) => l.status === "Qualified" || l.temperature === "HOT" || l.temperature === "WARM");
+    const qualifiedLeads = leads.filter((l) => isLeadQualified(l));
     const unassignedQualifiedLeads = qualifiedLeads.filter((l) => !l.assignedAssociateId).length;
     const pendingAllocations = allocations.filter((a) => a.status === "Assigned" && a.isCurrent).length;
 

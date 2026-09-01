@@ -1,5 +1,6 @@
 import { getAdapter } from "./dataSource";
 import { allocationsService } from "./allocationsService";
+import { isLeadQualified } from "@/lib/leadUtils";
 import type { AnalyticsData } from "@/lib/types";
 
 export const analyticsService = {
@@ -12,7 +13,7 @@ export const analyticsService = {
     const totalLeads = leads.length;
     const answered = calls.filter((c) => c.status === "Answered").length;
     const noAnswer = calls.filter((c) => c.status === "No Answer").length;
-    const qualified = leads.filter((l) => l.status === "Qualified" || l.status === "Follow-up" || l.status === "Closed").length;
+    const qualified = leads.filter((l) => isLeadQualified(l)).length;
     const hot = leads.filter((l) => l.temperature === "HOT").length;
     const warm = leads.filter((l) => l.temperature === "WARM").length;
     const cold = leads.filter((l) => l.temperature === "COLD").length;

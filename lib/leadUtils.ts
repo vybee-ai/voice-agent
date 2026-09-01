@@ -81,3 +81,20 @@ export function nextActionLabel(lead: Lead): string {
   if (lead.nextAction) return lead.nextAction;
   return "Review Lead";
 }
+
+/**
+ * Authoritative lead qualification check consumed across Dashboard, Analytics, Leads, and Allocations.
+ */
+export function isLeadQualified(lead: Lead): boolean {
+  if (lead.status === "Qualified" || lead.status === "Follow-up" || lead.status === "Closed") {
+    return true;
+  }
+  if (lead.temperature === "HOT" || lead.temperature === "WARM") {
+    return true;
+  }
+  if (lead.callOutcome && /qualified/i.test(lead.callOutcome)) {
+    return true;
+  }
+  return false;
+}
+

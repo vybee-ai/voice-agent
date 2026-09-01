@@ -30,11 +30,44 @@ export async function POST(request: NextRequest) {
       source,
     });
 
+    // Optionally forward lead event to n8n webhook
+    const n8nWebhookUrl =
+      process.env.N8N_NEW_LEAD_WEBHOOK_URL ||
+      "https://vybee.app.n8n.cloud/webhook/onex/new-lead";
+
+    let n8nDispatched = false;
+    if (n8nWebhookUrl) {
+      try {
+        const n8nRes = await fetch(n8nWebhookUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "User-Agent": "OneX-CRM/1.0",
+          },
+          body: JSON.stringify({
+            event: "new_lead",
+            leadId: lead.id,
+            buyerName: lead.buyerName,
+            phone: lead.phone,
+            source: lead.source,
+            status: lead.status,
+            createdAt: lead.createdAt,
+            submittedAt: new Date().toISOString(),
+          }),
+          signal: AbortSignal.timeout(5000),
+        });
+        n8nDispatched = n8nRes.ok;
+      } catch (webhookErr) {
+        console.warn("Failed to dispatch lead to n8n webhook:", webhookErr);
+      }
+    }
+
     return NextResponse.json(
       {
         success: true,
         message: "Lead recorded successfully.",
         lead,
+        n8nDispatched,
       },
       { status: 201 }
     );

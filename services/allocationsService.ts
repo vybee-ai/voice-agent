@@ -1,5 +1,6 @@
 import { getAdapter } from "./dataSource";
 import { rankAssociateRecommendations, scoreAssociateMatch } from "@/lib/allocationEngine";
+import { isLeadQualified } from "@/lib/leadUtils";
 import type {
   ClientAllocation,
   Lead,
@@ -32,11 +33,7 @@ export const allocationsService = {
 
   async getUnassignedQualifiedLeads(): Promise<Lead[]> {
     const leads = await getAdapter().getLeads();
-    return leads.filter(
-      (l) =>
-        (l.status === "Qualified" || l.temperature === "HOT" || l.temperature === "WARM") &&
-        !l.assignedAssociateId
-    );
+    return leads.filter((l) => isLeadQualified(l) && !l.assignedAssociateId);
   },
 
   async getRecommendations(leadId: string): Promise<MatchRecommendation[]> {

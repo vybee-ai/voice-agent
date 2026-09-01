@@ -67,7 +67,7 @@ export default async function CallsPage() {
                   </td>
                   <td className="px-4 py-3 text-ink-800">{call.outcome ?? "Not provided"}</td>
                   <td className="px-4 py-3">
-                    {call.recordingUrl ? (
+                    {call.recordingUrl || (call.transcript && call.transcript.length > 0) ? (
                       <Link
                         href={`/calls/${call.id}`}
                         className="inline-flex items-center gap-1 rounded bg-ink-900/5 px-2 py-0.5 text-xs font-medium text-ink-900 hover:bg-gold-400/20 hover:text-gold-700"

@@ -1,13 +1,50 @@
+import { Sparkles, Loader2, AlertCircle } from "lucide-react";
 import { TemperatureBadge } from "@/components/status-badge/StatusBadge";
 import type { Call } from "@/lib/types";
 
 export default function AnalysisPanel({ call }: { call: Call }) {
+  const hasAnalysis = Boolean(call.summary || call.score !== null || call.analysisId);
+  const isProcessing = call.status === "Answered" && !hasAnalysis;
+  const isNoAnswer = call.status === "No Answer" || call.status === "Failed";
+
   return (
     <div className="space-y-4">
+      {/* Explicit Analysis Pipeline Status Banner */}
+      {isProcessing && (
+        <div className="rounded-xl border border-gold-400/30 bg-gold-400/10 p-4">
+          <div className="flex items-center gap-2 text-sm font-medium text-gold-700">
+            <Loader2 size={16} className="animate-spin text-gold-500" />
+            <span>AI Call Analysis in Progress</span>
+          </div>
+          <p className="mt-1 text-xs text-ink-700/60">
+            Voice AI agent is extracting buyer requirements, qualification scores, and recommended actions.
+          </p>
+        </div>
+      )}
+
+      {isNoAnswer && !hasAnalysis && (
+        <div className="rounded-xl border border-ink-900/10 bg-sand-50 p-4">
+          <div className="flex items-center gap-2 text-sm font-medium text-ink-700">
+            <AlertCircle size={16} className="text-ink-700/45" />
+            <span>Analysis Unavailable</span>
+          </div>
+          <p className="mt-1 text-xs text-ink-700/55">
+            Call was {call.status.toLowerCase()}. Analysis is generated for answered AI voice conversations.
+          </p>
+        </div>
+      )}
+
       <div className="rounded-xl border border-ink-900/10 bg-white p-5 shadow-card">
-        <h3 className="font-display text-base text-ink-950">Qualification Summary</h3>
+        <div className="flex items-center justify-between">
+          <h3 className="font-display text-base text-ink-950">Qualification Summary</h3>
+          {hasAnalysis && (
+            <span className="inline-flex items-center gap-1 text-xs font-medium text-gold-600">
+              <Sparkles size={13} /> Verified
+            </span>
+          )}
+        </div>
         <p className="mt-2 text-sm leading-relaxed text-ink-800">
-          {call.summary ?? "No AI summary is available for this call."}
+          {call.summary ?? (isProcessing ? "Extracting summary from voice recording..." : "No AI summary is available for this call.")}
         </p>
       </div>
 
@@ -71,3 +108,4 @@ export default function AnalysisPanel({ call }: { call: Call }) {
     </div>
   );
 }
+
